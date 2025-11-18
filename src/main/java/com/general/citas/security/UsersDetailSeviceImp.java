@@ -13,8 +13,14 @@ import org.springframework.stereotype.Service;
 
 import com.general.citas.model.User;
 import com.general.citas.repository.UserRepository;
+import com.general.citas.security.AccountLocker.AccLockService;
+
+
 @Service
 public class UsersDetailSeviceImp implements UserDetailsService{
+
+    @Autowired
+    private AccLockService accLockService;
 
     @Autowired
     private UserRepository userRepository;
@@ -24,6 +30,11 @@ public class UsersDetailSeviceImp implements UserDetailsService{
             User user = userRepository.findByName(username)
                     .orElseThrow(() -> new UsernameNotFoundException("El usuario " + username + " no existe"))
             ;
+
+            boolean accountNonLocked = true;
+        if (accLockService != null) {
+            accountNonLocked = !accLockService.isUserLocked(user.getUuid());
+        }
     
             Collection<? extends GrantedAuthority> authorities = Set.of(
             new SimpleGrantedAuthority("ROLE_" + user.getRole().name())
@@ -32,7 +43,10 @@ public class UsersDetailSeviceImp implements UserDetailsService{
             return new org.springframework.security.core.userdetails.User (
                 user.getName() , 
                 user.getPassword(), 
-                true , true , true , true ,
+                user.isEnabled(), 
+                true , 
+                true , 
+                accountNonLocked,
                 authorities
             );  
         }

@@ -48,6 +48,7 @@ public class Servicio {
     private BigDecimal price;
 
     @OneToMany(mappedBy = "service",  fetch = FetchType.LAZY , cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
     private List<Appointment> appointments = new ArrayList<>();
 
 

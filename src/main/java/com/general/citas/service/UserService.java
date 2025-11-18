@@ -13,7 +13,9 @@ import com.general.citas.converter.UserConverter;
 import com.general.citas.model.User;
 import com.general.citas.model.User.Role;
 import com.general.citas.repository.UserRepository;
+import com.general.citas.security.AccountLocker.AccLockService;
 
+import jakarta.persistence.EntityExistsException;
 import jakarta.persistence.EntityNotFoundException;
 
 @Service
@@ -28,12 +30,15 @@ public class UserService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private AccLockService accLockService;
+
     public UsersDetailsResponseDTO createUser(UserRequestDTO requestDTO) {
             if (userRepository.existsByName(requestDTO.getName())) {
-                throw new RuntimeException("Username already exists");
+                throw new EntityExistsException("Username already exists");
             }
             if (userRepository.existsByEmail(requestDTO.getEmail())) {
-                throw new RuntimeException("Email already exists");
+                throw new EntityExistsException("Email already exists");
             }
     
             User user = userConverter.userRequestDTOtoUserEntity(requestDTO);
@@ -44,6 +49,11 @@ public class UserService {
     
             userRepository.save(user);
 
+            // Inicializar AccountLock
+             if (user.getAccountLock() == null) {
+            accLockService.unlockUser(user.getUuid()); // crea y desbloquea por defecto
+            }
+
             return userConverter.userEntityToUserDetailResponseDTO(user);
     }
 
@@ -53,6 +63,7 @@ public class UserService {
         return userConverter.userEntityToUserDetailResponseDTO(user);
     }
 
+    //TODO implementar paginacion
     public List<UsersDetailsResponseDTO> getAllUsers() {
          return userRepository.findAll().stream()
                 .map(userConverter::userEntityToUserDetailResponseDTO)
@@ -69,8 +80,6 @@ public class UserService {
         if (requestDTO.getPassword() != null && !requestDTO.getPassword().isEmpty()) {
             user.setPassword(passwordEncoder.encode(requestDTO.getPassword()));
         }
-            
-        user.setRole(user.getRole());
 
         User updatedUser = userRepository.save(user);
         return userConverter.userEntityToUserDetailResponseDTO(updatedUser);
@@ -81,9 +90,7 @@ public class UserService {
         User user = userRepository.findByUuid(uuid)
                 .orElseThrow(() -> new EntityNotFoundException("User not found with id: " + uuid));
 
-        Long id = user.getId();
-
-        userRepository.deleteById(id);
+        userRepository.delete(user);
     }
         
 }

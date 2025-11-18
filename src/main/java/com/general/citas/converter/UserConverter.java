@@ -31,9 +31,9 @@ public class UserConverter {
             .build();
     }
 
-    public AuthResponseDTO userEntityToUserResponseDTO(String token) {
+    public AuthResponseDTO userEntityToUserResponseDTO(String accessToken) {
         return AuthResponseDTO.builder()
-               .token(token)
+                .accessToken(accessToken)
                 .build();
     }
     

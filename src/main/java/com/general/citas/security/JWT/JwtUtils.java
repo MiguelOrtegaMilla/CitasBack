@@ -13,7 +13,11 @@ import com.general.citas.model.User.Role;
 
 import java.security.Key;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 @Component
@@ -24,37 +28,67 @@ public class JwtUtils {
     @Value("${jwt.secret.key}")
     private String secretKey;
 
-    @Value("${jwt.time.expiration}")
-    private String timeExpiration;
+    @Value("${jwt.access-expiration-minutes}")
+    private int accessTokenExpirationMinutes;
 
-    public String generateToken(User user) {
+    @Value("${jwt.refresh-expiration-days}")
+    private int refreshTokenExpirationDays;
 
-        long expiration = Long.parseLong(timeExpiration);
+    private final Map<String, String> refreshTokenStore = new ConcurrentHashMap<>();
+
+    public String generateAccessToken (User user){
+
+        Instant now = Instant.now();
+        Instant exp = now.plus(accessTokenExpirationMinutes, ChronoUnit.MINUTES);
 
         return Jwts.builder()
-                .setSubject(user.getName())
-                .claim("uuid", user.getUuid().toString())  // Incluye UUID del usuario
-                .claim("role", user.getRole().name())
-                .setIssuedAt(new Date())
-                .setExpiration(Date.from(Instant.now().plusMillis(expiration)))
-                .signWith(getSignatureKey(), SignatureAlgorithm.HS256)
-                .compact();
+            .setSubject(user.getName())
+            .claim("uuid", user.getUuid())
+            .claim("role", user.getRole().name())
+            .setIssuedAt(Date.from(now))
+            .setExpiration(Date.from(exp))
+            .signWith(getSignatureKey(), SignatureAlgorithm.HS256)
+            .compact();
+    }
+
+    public String generateRefreshToken(User user){
+
+        Instant now = Instant.now();
+        Instant exp = now.plus(refreshTokenExpirationDays, ChronoUnit.DAYS);
+
+        String refreshToken = Jwts.builder()
+            .setSubject(user.getName())
+            .claim("uuid" , user.getUuid())
+            .claim("role", user.getRole().name())
+            .setIssuedAt( Date.from(now))
+            .setExpiration(Date.from(exp))
+            .signWith(getSignatureKey(), SignatureAlgorithm.HS256)
+            .compact();
+
+          refreshTokenStore.put(refreshToken, user.getUuid());
+          
+          return refreshToken;
     }
 
 
     public boolean isTokenValid(String token , UserDetails userDetails) {
         try {
-            Jwts.parserBuilder()
-                    .setSigningKey(getSignatureKey())
-                    .build()
-                    .parseClaimsJws(token)
-                    .getBody();
+            Claims claims = extractAllClaims(token);
+
+            String username = claims.getSubject();
+            if (!username.equals(userDetails.getUsername())){
+                return false;
+            }
+
+            Date expiration = claims.getExpiration();
+            if (expiration.before(new Date())) {
+                return false;
+            }
+
             return true;
-        } catch (ExpiredJwtException e) {
-            logger.warn("Token expirado: " + e.getMessage());
-            return false;
-        }catch (Exception e) {
-            logger.error("Token inválido: " + e.getMessage());
+
+        }catch (JwtException e) {
+            logger.warn("Token inválido: {}", e.getMessage());
             return false;
         }
     }
@@ -64,7 +98,12 @@ public class JwtUtils {
     }
 
     public Role getRoleFromToken(String token) {
-        return getClaim(token, claims -> claims.get("role", Role.class));
+    String roleStr = getClaim(token, claims -> claims.get("role", String.class));
+    return roleStr != null ? Role.valueOf(roleStr) : null;
+    }
+
+    public String getUserUuidFromToken(String token){
+        return getClaim(token, claims -> claims.get("uuid" , String.class));
     }
 
     public <T> T getClaim(String token, Function<Claims, T> claimsFunction) {
@@ -83,5 +122,24 @@ public class JwtUtils {
     private Key getSignatureKey() {
         byte[] keyBytes = java.util.Base64.getDecoder().decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    public String validateRefreshTokenAndGetUuid(String refreshToken) {
+        Claims claims = extractAllClaims(refreshToken);
+        String uuid = claims.get("uuid", String.class);
+        if (!refreshTokenStore.containsKey(refreshToken) || !refreshTokenStore.get(refreshToken).equals(uuid)) {
+            throw new JwtException("Refresh token inválido o revocado");
+        }
+        return uuid;
+    }
+
+    public void revokeRefreshToken(String refreshToken){
+
+        refreshTokenStore.remove(refreshToken);
+    }
+
+    public long getRefreshTokenExpirationSeconds () {
+
+        return TimeUnit.DAYS.toSeconds(refreshTokenExpirationDays);
     }
 }

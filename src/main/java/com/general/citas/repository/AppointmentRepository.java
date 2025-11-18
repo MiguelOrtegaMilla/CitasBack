@@ -57,7 +57,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment , Long>
 
     @Query("""
         SELECT a FROM Appointment a 
-        WHERE a.service.uuuid = :serviceUuid 
+        WHERE a.service.uuid = :serviceUuid 
         AND a.datetime BETWEEN :startTime AND :endTime
         AND (:excludeAppointmentId IS NULL OR a.id != :excludeAppointmentId)
     """)
@@ -95,7 +95,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment , Long>
     """)
     List<Appointment> findAppointmentsByDatetime(@Param("datetime") LocalDateTime datetime);        
     
-    @Query("SELECT a.rebibo FROM Appointment a WHERE a.recibo IS NOT NULL ORDER BY a.id DESC")
+    @Query("SELECT a.recibo FROM Appointment a WHERE a.recibo IS NOT NULL ORDER BY a.id DESC")
     Optional<String> findLastReceiptNumber();
 
     @Query("SELECT a FROM Appointment a WHERE a.receiptNumber = :receiptNumber")
